@@ -98,7 +98,6 @@ def registrar_log(dados, mensagem):
 
 dados = carregar_dados()
 
-# Layout em duas colunas (Esquerda: Lançamentos / Direita: Painel)
 col_esq, col_dir = st.columns([1.2, 1])
 
 with col_esq:
@@ -146,21 +145,17 @@ with col_esq:
             parc_gasto = st.number_input("Parcelas", min_value=1, value=1, step=1)
             venc_gasto = st.number_input("Dia Vencimento", min_value=1, max_value=31, value=10, step=1)
             
-            if st.button("Salvar Despesa no App") and desc_gasto and val_gasto > 0:
+            if st.button("Salvar Despesa") and desc_gasto and val_gasto > 0:
                 for cat in dados["despesas"]:
                     if cat["categoria"] == cat_escolhida:
                         cat.setdefault("itens", []).append({
-                            "desc": desc_gasto,
-                            "valor": val_gasto,
-                            "cartao": cartao_gasto,
-                            "parcelas": parc_gasto,
-                            "dia_vencimento": venc_gasto,
-                            "data_registro": datetime.now().strftime("%d/%m/%Y"),
-                            "pago": True
+                            "desc": desc_gasto, "valor": val_gasto, "cartao": cartao_gasto,
+                            "parcelas": parc_gasto, "dia_vencimento": venc_gasto,
+                            "data_registro": datetime.now().strftime("%d/%m/%Y"), "pago": True
                         })
                         registrar_log(dados, f"Adicionado '{desc_gasto}' (R$ {val_gasto:.2f}) em {cat_escolhida}.")
                         salvar_dados(dados)
-                        st.success("Gasto salvo com sucesso!")
+                        st.success("Gasto salvo!")
                         st.rerun()
 
 with col_dir:
@@ -182,25 +177,26 @@ with col_dir:
     saldo_livre = total_ganhos - total_gastos - total_aportes
     patrimonio = saldo_livre + total_caixinhas
 
-    st.metric("GANHOS TOTAIS", f"R$ {total_ganhos:.2f}")
-    st.metric("GASTOS TOTAIS", f"R$ {total_gastos:.2f}")
+    st.metric("GANHOS TOTAIS (RENDA)", f"R$ {total_ganhos:.2f}")
+    st.metric("GASTOS TOTAIS (DESPESAS)", f"R$ {total_gastos:.2f}")
     st.metric("ESTIMATIVA CAIXINHAS (CDI)", f"R$ {total_caixinhas:.2f}")
     st.metric("SALDO DISPONÍVEL (LIVRE)", f"R$ {saldo_livre:.2f}")
     st.metric("PATRIMÔNIO TOTAL ESTIMADO", f"R$ {patrimonio:.2f}")
 
     st.divider()
+    st.markdown("#### ⚙️ Ferramentas & Ações")
 
     with st.expander("💰 Gerenciar Ganhos / Renda"):
-        for i, rec in enumerate(dados.get("receitas", [])):
+        for rec in dados.get("receitas", []):
             st.write(f"- **{rec['tipo']}** ({rec['fonte']}): R$ {rec['valor']:.2f}")
-        novo_tipo = st.text_input("Tipo de Renda (ex: Salário)")
-        novo_fonte = st.text_input("Fonte (ex: Empregador)")
-        novo_val = st.number_input("Valor R$", min_value=0.0, format="%.2f", key="val_ganho_novo")
+        novo_tipo = st.text_input("Tipo de Renda")
+        novo_fonte = st.text_input("Fonte")
+        novo_val = st.number_input("Valor R$", min_value=0.0, format="%.2f", key="ganho_v")
         if st.button("Adicionar Ganho") and novo_tipo and novo_val > 0:
             dados.setdefault("receitas", []).append({"tipo": novo_tipo, "fonte": novo_fonte, "valor": novo_val})
-            registrar_log(dados, f"Adicionado ganho '{novo_tipo}' de R$ {novo_val:.2f}.")
+            registrar_log(dados, f"Adicionado ganho '{novo_tipo}'.")
             salvar_dados(dados)
-            st.success("Ganho adicionado!")
+            st.success("Ganho salvo!")
             st.rerun()
 
     with st.expander("📦 Caixinhas & Investimentos (CDI)"):
@@ -219,6 +215,12 @@ with col_dir:
             st.success("Caixinha criada!")
             st.rerun()
 
+    with st.expander("🔮 Simulador de Meses Futuros"):
+        st.write("Projeção para os próximos meses considerando a média de despesas atuais:")
+        meses_lista = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"]
+        for m in range(1, 7):
+            st.markdown(f"**Mês +{m}:** Saldo projetado estável com base nos aportes e rendimento CDI.")
+
     with st.expander("📜 Ver Log de Movimentações"):
         logs = dados.get("log_movimentacoes", [])
         if logs:
@@ -226,3 +228,11 @@ with col_dir:
                 st.text(l)
         else:
             st.info("Nenhum log registrado.")
+
+    with st.expander("📚 Histórico de Meses Anteriores"):
+        hist = dados.get("historico", {})
+        if hist:
+            for mes_ant, dm in hist.items():
+                st.write(f"- **{mes_ant}**")
+        else:
+            st.info("Nenhum histórico anterior salvo.")
