@@ -1,16 +1,12 @@
+import streamlit as st
 import json
 import os
 import copy
 from datetime import datetime
-from kivy.lang import Builder
-from kivymd.app import MDApp
-from kivymd.uix.screen import MDScreen
-from kivymd.uix.list import OneLineIconListItem, IconLeftWidget
-from kivymd.uix.dialog import MDDialog
-from kivymd.uix.button import MDFlatButton, MDRaisedButton
-from kivymd.uix.textfield import MDTextField
 
 DATA_FILE = "dados_haacktec_fin.json"
+
+st.set_page_config(page_title="Haacktec - Gestão Financeira", page_icon="💰", layout="centered")
 
 MESES_PT = {
     "January": "Janeiro", "February": "Fevereiro", "March": "Março",
@@ -27,117 +23,91 @@ DESPESAS_INICIAIS_PADRAO = [
     {"categoria": "💊 Saúde", "meta": 0.0, "itens": []}
 ]
 
-KV = '''
-MDScreen:
-    md_bg_color: 0.1, 0.1, 0.1, 1
+CARTOES_PADRAO = [
+    "Dinheiro / Pix", "Mercado Pago", "Nubank", "Itaú", "Caixa",
+    "Bradesco", "Banco do Brasil", "Santander", "Banco Inter", "C6 Bank"
+]
 
-    MDBoxLayout:
-        orientation: 'vertical'
+def obter_mes_atual_pt():
+    mes_en = datetime.now().strftime("%B")
+    mes_pt = MESES_PT.get(mes_en, mes_en)
+    ano = datetime.now().strftime("%Y")
+    return f"{mes_pt} / {ano}"
 
-        MDTopAppBar:
-            title: "Haacktec - Gestão Financeira"
-            elevation: 4
-            md_bg_color: 0.17, 0.48, 0.47, 1
-            specific_text_color: 1, 1, 1, 1
+def carregar_dados():
+    if not os.path.exists(DATA_FILE):
+        return {
+            "configurado": True,
+            "mes_atual": obter_mes_atual_pt(),
+            "historico": {},
+            "cartoes": CARTOES_PADRAO,
+            "receitas": [{"tipo": "Salário Principal", "fonte": "Empregador", "valor": 5000.0}],
+            "caixinhas": [
+                {"nome": "Reserva de Ferramentas", "dinheiro_inicial": 0.0, "aporte_mensal": 0.0, "cdi_anual": 10.50}
+            ],
+            "despesas": copy.deepcopy(DESPESAS_INICIAIS_PADRAO),
+            "log_movimentacoes": []
+        }
+    with open(DATA_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
 
-        ScrollView:
-            MDList:
-                id: lista_categorias
+def salvar_dados(dados):
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(dados, f, ensure_ascii=False, indent=4)
 
-    MDFloatingActionButton:
-        icon: "plus"
-        pos_hint: {"center_x": .85, "center_y": .1}
-        md_bg_color: 0.17, 0.48, 0.47, 1
-        on_release: app.abrir_dialogo_nova_categoria()
-'''
+dados = carregar_dados()
 
-class HaacktecApp(MDApp):
-    dialog = None
+st.title("🛠️ Haacktec - Gestão Financeira")
+st.write(f"**Mês Atual:** {dados.get('mes_atual', '')}")
 
-    def build(self):
-        self.theme_cls.theme_style = "Dark"
-        self.theme_cls.primary_palette = "Teal"
-        self.carregar_dados()
-        return Builder.load_string(KV)
+# 📊 Cálculo dos Totais
+total_ganhos = sum(i["valor"] for i in dados.get("receitas", []))
+total_gastos = sum(sum(item["valor"] for item in d.get("itens", [])) for d in dados.get("despesas", []))
+saldo_livre = total_ganhos - total_gastos
 
-    def on_start(self):
-        self.atualizar_tela()
+# 📱 Cards de Resumo na Tela
+col1, col2, col3 = st.columns(3)
+col1.metric("Ganhos", f"R$ {total_ganhos:.2f}")
+col2.metric("Gastos", f"R$ {total_gastos:.2f}")
+col3.metric("Saldo Livre", f"R$ {saldo_livre:.2f}")
 
-    def obter_mes_atual_pt(self):
-        mes_en = datetime.now().strftime("%B")
-        mes_pt = MESES_PT.get(mes_en, mes_en)
-        ano = datetime.now().strftime("%Y")
-        return f"{mes_pt} / {ano}"
+st.divider()
 
-    def carregar_dados(self):
-        if not os.path.exists(DATA_FILE):
-            self.dados = {
-                "configurado": True,
-                "mes_atual": self.obter_mes_atual_pt(),
-                "historico": {},
-                "receitas": [{"tipo": "Salário Principal", "fonte": "Empregador", "valor": 5000.0}],
-                "caixinhas": [{"nome": "Reserva de Ferramentas", "dinheiro_inicial": 0.0, "aporte_mensal": 0.0, "cdi_anual": 10.50}],
-                "despesas": copy.deepcopy(DESPESAS_INICIAIS_PADRAO),
-                "log_movimentacoes": []
-            }
-            self.salvar_dados()
+# 📂 Visualização e Adição de Despesas
+st.subheader("📋 Despesas por Categoria")
+
+for d in dados.get("despesas", []):
+    total_cat = sum(item["valor"] for item in d.get("itens", []))
+    with st.expander(f"{d['categoria']} — Total: R$ {total_cat:.2f}"):
+        if d.get("itens"):
+            for idx, item in enumerate(d["itens"]):
+                st.write(f"• **{item['desc']}**: R$ {item['valor']:.2f} (Cartão: {item.get('cartao', 'Pix')})")
         else:
-            with open(DATA_FILE, "r", encoding="utf-8") as f:
-                self.dados = json.load(f)
+            st.info("Nenhum item cadastrado nesta categoria.")
 
-    def salvar_dados(self):
-        with open(DATA_FILE, "w", encoding="utf-8") as f:
-            json.dump(self.dados, f, ensure_ascii=False, indent=4)
+st.divider()
 
-    def atualizar_tela(self):
-        lista = self.root.ids.lista_categorias
-        lista.clear_widgets()
-        
-        for d in self.dados.get("despesas", []):
-            total_cat = sum(item["valor"] for item in d.get("itens", []))
-            meta_cat = d.get("meta", 0.0)
-            
-            texto_item = f"{d['categoria']} — Gasto: R$ {total_cat:.2f}"
-            if meta_cat > 0:
-                texto_item += f" (Meta: R$ {meta_cat:.0f})"
-
-            listItem = OneLineIconListItem(text=texto_item)
-            icon = IconLeftWidget(icon="wallet")
-            listItem.add_widget(icon)
-            lista.add_widget(listItem)
-
-    def abrir_dialogo_nova_categoria(self):
-        if not self.dialog:
-            self.campo_texto = MDTextField(hint_text="Nome da Categoria (ex: 🛠️ Ferramentas)")
-            self.dialog = MDDialog(
-                title="Nova Categoria",
-                type="custom",
-                content_cls=self.campo_texto,
-                buttons=[
-                    MDFlatButton(
-                        text="CANCELAR",
-                        theme_text_color="Custom",
-                        text_color=self.theme_cls.primary_color,
-                        on_release=lambda x: self.dialog.dismiss()
-                    ),
-                    MDRaisedButton(
-                        text="CRIAR",
-                        md_bg_color=(0.17, 0.48, 0.47, 1),
-                        on_release=lambda x: self.salvar_nova_categoria()
-                    ),
-                ],
-            )
-        self.dialog.open()
-
-    def salvar_nova_categoria(self):
-        nome = self.campo_texto.text.strip()
-        if nome:
-            nova_cat = f"📂 {nome}"
-            self.dados["despesas"].append({"categoria": nova_cat, "meta": 0.0, "itens": []})
-            self.salvar_dados()
-            self.atualizar_tela()
-            self.campo_texto.text = "_"
-            self.dialog.dismiss()
-
-if __name__ == '__main__':
-    HaacktecApp().run()
+# ➕ Formulário para Adicionar Novo Item Rápido
+st.subheader("➕ Adicionar Novo Gasto")
+with st.form("form_novo_gasto"):
+    cat_nomes = [d["categoria"] for d in dados["despesas"]]
+    cat_escolhida = st.selectbox("Categoria", cat_nomes)
+    desc_item = st.text_input("Descrição do Gasto")
+    valor_item = st.number_input("Valor (R$)", min_value=0.0, format="%.2f")
+    cartao_escolhido = st.selectbox("Forma de Pagamento", dados.get("cartoes", CARTOES_PADRAO))
+    
+    enviar = st.form_submit_button("Salvar Gasto")
+    if enviar and desc_item and valor_item > 0:
+        for d in dados["despesas"]:
+            if d["categoria"] == cat_escolhida:
+                d.get("itens", []).append({
+                    "desc": desc_item,
+                    "valor": valor_item,
+                    "cartao": cartao_escolhido,
+                    "parcelas": 1,
+                    "dia_vencimento": 10,
+                    "pago": True
+                })
+                salvar_dados(dados)
+                st.success(f"Gasto '{desc_item}' adicionado com sucesso!")
+                st.rerun()
